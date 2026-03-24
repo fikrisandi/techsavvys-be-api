@@ -12,7 +12,14 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 
 app.use(helmet());
-app.use(cors());
+app.use(cors({
+  origin: [
+    "https://techsavvys-official.com",
+    "https://www.techsavvys-official.com",
+    "http://localhost:3000",
+  ],
+  credentials: true,
+}));
 app.use(express.json());
 app.use("/uploads", express.static("uploads"));
 
