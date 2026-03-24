@@ -12,7 +12,9 @@ const uploadRoutes = require("./routes/upload");
 const app = express();
 const PORT = process.env.PORT || 4000;
 
-app.use(helmet());
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+}));
 app.use(cors({
   origin: [
     "https://techsavvys-official.com",
