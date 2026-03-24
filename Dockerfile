@@ -10,6 +10,8 @@ RUN npx prisma generate
 
 COPY src ./src
 
+RUN mkdir -p uploads/portfolios
+
 EXPOSE 4000
 
 CMD ["sh", "-c", "npx prisma migrate deploy && node src/index.js"]

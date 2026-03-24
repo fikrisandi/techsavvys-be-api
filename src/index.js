@@ -7,6 +7,7 @@ const authRoutes = require("./routes/auth");
 const portfolioRoutes = require("./routes/portfolios");
 const testimonialRoutes = require("./routes/testimonials");
 const contactRoutes = require("./routes/contacts");
+const uploadRoutes = require("./routes/upload");
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -28,6 +29,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/portfolios", portfolioRoutes);
 app.use("/api/testimonials", testimonialRoutes);
 app.use("/api/contacts", contactRoutes);
+app.use("/api/upload", uploadRoutes);
 
 // Health check
 app.get("/api/health", (req, res) => {
