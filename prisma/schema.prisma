@@ -68,6 +68,43 @@ model Contact {
   createdAt DateTime @default(now())
 }
 
+model Invitation {
+  id            String   @id @default(uuid())
+  slug          String   @unique
+  theme         String
+  expiredAt     DateTime
+  openingText   String?
+  groomNickname String
+  groomFullName String
+  groomParents  String
+  groomPhoto    String?
+  brideNickname String
+  brideFullName String
+  brideParents  String
+  bridePhoto    String?
+  events        Json     @default("[]")
+  photos        Json     @default("[]")
+  banks         Json     @default("[]")
+  musicUrl      String?
+  rsvpEnabled   Boolean  @default(true)
+  wishesEnabled Boolean  @default(true)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  rsvps         Rsvp[]
+}
+
+model Rsvp {
+  id           String     @id @default(uuid())
+  invitationId String
+  invitation   Invitation @relation(fields: [invitationId], references: [id], onDelete: Cascade)
+  name         String
+  attendance   String
+  guests       Int        @default(1)
+  message      String?
+  createdAt    DateTime   @default(now())
+}
+
 enum Role {
   ADMIN
   USER
