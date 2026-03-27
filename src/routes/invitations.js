@@ -1,9 +1,29 @@
 const express = require("express");
+const path = require("path");
+const fs = require("fs");
 const { PrismaClient } = require("@prisma/client");
 const { authenticate, requireAdmin } = require("../middleware/auth");
 
 const router = express.Router();
 const prisma = new PrismaClient();
+
+// Delete uploaded file if it's a local upload path
+function deleteFile(url) {
+  if (!url || !url.startsWith("/uploads/")) return;
+  const filePath = path.join(process.cwd(), url);
+  try {
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+  } catch {}
+}
+
+// Cleanup all uploaded files for an invitation
+function cleanupInvitationFiles(inv) {
+  if (inv.groomPhoto) deleteFile(inv.groomPhoto);
+  if (inv.bridePhoto) deleteFile(inv.bridePhoto);
+  if (inv.musicUrl) deleteFile(inv.musicUrl);
+  const photos = Array.isArray(inv.photos) ? inv.photos : [];
+  for (const url of photos) deleteFile(url);
+}
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -349,10 +369,15 @@ router.put("/:id", authenticate, requireAdmin, async (req, res) => {
   }
 });
 
-// DELETE /api/invitations/:id — delete invitation (admin)
+// DELETE /api/invitations/:id — delete invitation + cleanup files (admin)
 router.delete("/:id", authenticate, requireAdmin, async (req, res) => {
   try {
+    const inv = await prisma.invitation.findUnique({ where: { id: req.params.id } });
+    if (!inv) return res.status(404).json({ error: "Invitation not found" });
+
     await prisma.invitation.delete({ where: { id: req.params.id } });
+    cleanupInvitationFiles(inv);
+
     res.json({ success: true });
   } catch (err) {
     if (err.code === "P2025") return res.status(404).json({ error: "Invitation not found" });

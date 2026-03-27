@@ -8,6 +8,7 @@ const portfolioRoutes = require("./routes/portfolios");
 const testimonialRoutes = require("./routes/testimonials");
 const contactRoutes = require("./routes/contacts");
 const uploadRoutes = require("./routes/upload");
+const uploadInvitationRoutes = require("./routes/upload-invitation");
 const invitationRoutes = require("./routes/invitations");
 
 const app = express();
@@ -37,6 +38,7 @@ app.use("/api/portfolios", portfolioRoutes);
 app.use("/api/testimonials", testimonialRoutes);
 app.use("/api/contacts", contactRoutes);
 app.use("/api/upload", uploadRoutes);
+app.use("/api/upload-invitation", uploadInvitationRoutes);
 app.use("/api/invitations", invitationRoutes);
 
 // Health check
