@@ -72,6 +72,7 @@ model Invitation {
   id            String   @id @default(uuid())
   slug          String   @unique
   theme         String
+  customColors  Json?
   expiredAt     DateTime
   openingText   String?
   groomNickname String
@@ -82,7 +83,8 @@ model Invitation {
   brideFullName String
   brideParents  String
   bridePhoto    String?
-  events        Json     @default("[]")
+  akad          Json?
+  receptions    Json     @default("[]")
   photos        Json     @default("[]")
   banks         Json     @default("[]")
   musicUrl      String?
@@ -92,6 +94,16 @@ model Invitation {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   rsvps         Rsvp[]
+  guests        Guest[]
+}
+
+model Guest {
+  id           String     @id @default(uuid())
+  invitationId String
+  invitation   Invitation @relation(fields: [invitationId], references: [id], onDelete: Cascade)
+  name         String
+  receptions   String[]
+  createdAt    DateTime   @default(now())
 }
 
 model Rsvp {

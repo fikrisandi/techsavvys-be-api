@@ -7,10 +7,33 @@ const prisma = new PrismaClient();
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-function formatInvitation(inv) {
+function formatInvitation(inv, guestReceptions) {
+  // Build events array: akad first (always), then filtered receptions
+  const events = [];
+  if (inv.akad) {
+    events.push({ ...inv.akad, type: "akad", icon: "akad" });
+  }
+
+  const receptions = Array.isArray(inv.receptions) ? inv.receptions : [];
+  if (guestReceptions) {
+    // Filter receptions based on guest assignment
+    const codes = guestReceptions.map((r) => r.toLowerCase());
+    for (const r of receptions) {
+      if (r.code && codes.includes(r.code.toLowerCase())) {
+        events.push({ ...r, type: "reception", icon: "reception" });
+      }
+    }
+  } else {
+    // No guest filter — show all receptions
+    for (const r of receptions) {
+      events.push({ ...r, type: "reception" });
+    }
+  }
+
   return {
     slug: inv.slug,
     theme: inv.theme,
+    customColors: inv.customColors ?? undefined,
     expiredAt: inv.expiredAt.toISOString(),
     openingText: inv.openingText ?? undefined,
     groom: {
@@ -25,7 +48,7 @@ function formatInvitation(inv) {
       parents: inv.brideParents,
       photo: inv.bridePhoto ?? undefined,
     },
-    events: inv.events,
+    events,
     photos: inv.photos,
     banks: inv.banks,
     musicUrl: inv.musicUrl ?? undefined,
@@ -34,16 +57,83 @@ function formatInvitation(inv) {
   };
 }
 
+function parseCSV(text) {
+  const lines = text.trim().split("\n");
+  if (lines.length < 2) return [];
+
+  const headers = lines[0].split(",").map((h) => h.trim().replace(/^"|"$/g, "").toLowerCase());
+  const nameIdx = headers.indexOf("nama_tamu");
+  const slugIdx = headers.indexOf("slug");
+  const receptionIdx = headers.indexOf("resepsi");
+
+  if (nameIdx === -1 || slugIdx === -1 || receptionIdx === -1) {
+    throw new Error("CSV harus memiliki kolom: nama_tamu, slug, resepsi");
+  }
+
+  const guests = [];
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+
+    // Simple CSV parse (handles quoted fields)
+    const cols = [];
+    let current = "";
+    let inQuotes = false;
+    for (const ch of line) {
+      if (ch === '"') {
+        inQuotes = !inQuotes;
+      } else if (ch === "," && !inQuotes) {
+        cols.push(current.trim());
+        current = "";
+      } else {
+        current += ch;
+      }
+    }
+    cols.push(current.trim());
+
+    const name = cols[nameIdx]?.replace(/^"|"$/g, "").trim();
+    const slug = cols[slugIdx]?.replace(/^"|"$/g, "").trim();
+    const receptions = cols[receptionIdx]
+      ?.replace(/^"|"$/g, "")
+      .split("|")
+      .map((r) => r.trim())
+      .filter(Boolean);
+
+    if (name && slug && receptions && receptions.length > 0) {
+      guests.push({ name, slug, receptions });
+    }
+  }
+  return guests;
+}
+
 // ── PUBLIC ENDPOINTS ────────────────────────────────────────────────────────
 
 // GET /api/invitations/:slug — get invitation by slug (public)
+// Optional query: ?to=GuestName — filters receptions by guest assignment
 router.get("/:slug", async (req, res) => {
   try {
     const inv = await prisma.invitation.findUnique({
       where: { slug: req.params.slug, isActive: true },
     });
     if (!inv) return res.status(404).json({ error: "Invitation not found" });
-    res.json(formatInvitation(inv));
+
+    let guestReceptions = null;
+    const guestName = req.query.to;
+    if (guestName) {
+      const decoded = decodeURIComponent(String(guestName)).trim();
+      const guest = await prisma.guest.findFirst({
+        where: {
+          invitationId: inv.id,
+          name: { equals: decoded, mode: "insensitive" },
+        },
+      });
+      if (guest) {
+        guestReceptions = guest.receptions;
+      }
+      // If guest not found, show all receptions (fallback)
+    }
+
+    res.json(formatInvitation(inv, guestReceptions));
   } catch (err) {
     res.status(500).json({ error: "Server error" });
   }
@@ -120,7 +210,8 @@ router.get("/", authenticate, requireAdmin, async (req, res) => {
       select: {
         id: true, slug: true, theme: true, expiredAt: true, isActive: true,
         groomNickname: true, brideNickname: true, createdAt: true,
-        _count: { select: { rsvps: true } },
+        customColors: true,
+        _count: { select: { rsvps: true, guests: true } },
       },
     });
     res.json(invitations);
@@ -133,8 +224,8 @@ router.get("/", authenticate, requireAdmin, async (req, res) => {
 router.post("/", authenticate, requireAdmin, async (req, res) => {
   try {
     const {
-      slug, theme, expiredAt, openingText,
-      groom, bride, events, photos, banks,
+      slug, theme, customColors, expiredAt, openingText,
+      groom, bride, akad, receptions, photos, banks,
       musicUrl, rsvpEnabled, wishesEnabled,
     } = req.body;
 
@@ -144,8 +235,9 @@ router.post("/", authenticate, requireAdmin, async (req, res) => {
 
     const inv = await prisma.invitation.create({
       data: {
-        slug: String(slug).toLowerCase().trim(),
+        slug: String(slug).toLowerCase().replace(/\s+/g, "-").trim(),
         theme: String(theme),
+        customColors: customColors ?? null,
         expiredAt: new Date(expiredAt),
         openingText: openingText ?? null,
         groomNickname: groom.nickname,
@@ -156,7 +248,8 @@ router.post("/", authenticate, requireAdmin, async (req, res) => {
         brideFullName: bride.fullName,
         brideParents: bride.parents,
         bridePhoto: bride.photo ?? null,
-        events: events ?? [],
+        akad: akad ?? null,
+        receptions: receptions ?? [],
         photos: photos ?? [],
         banks: banks ?? [],
         musicUrl: musicUrl ?? null,
@@ -175,13 +268,14 @@ router.post("/", authenticate, requireAdmin, async (req, res) => {
 router.put("/:id", authenticate, requireAdmin, async (req, res) => {
   try {
     const {
-      theme, expiredAt, openingText,
-      groom, bride, events, photos, banks,
+      theme, customColors, expiredAt, openingText,
+      groom, bride, akad, receptions, photos, banks,
       musicUrl, rsvpEnabled, wishesEnabled, isActive,
     } = req.body;
 
     const data = {};
     if (theme) data.theme = theme;
+    if (customColors !== undefined) data.customColors = customColors;
     if (expiredAt) data.expiredAt = new Date(expiredAt);
     if (openingText !== undefined) data.openingText = openingText;
     if (groom) {
@@ -196,7 +290,8 @@ router.put("/:id", authenticate, requireAdmin, async (req, res) => {
       if (bride.parents) data.brideParents = bride.parents;
       if (bride.photo !== undefined) data.bridePhoto = bride.photo;
     }
-    if (events) data.events = events;
+    if (akad !== undefined) data.akad = akad;
+    if (receptions) data.receptions = receptions;
     if (photos) data.photos = photos;
     if (banks) data.banks = banks;
     if (musicUrl !== undefined) data.musicUrl = musicUrl;
@@ -226,6 +321,19 @@ router.delete("/:id", authenticate, requireAdmin, async (req, res) => {
   }
 });
 
+// GET /api/invitations/:id/detail — get full invitation detail for admin
+router.get("/:id/detail", authenticate, requireAdmin, async (req, res) => {
+  try {
+    const inv = await prisma.invitation.findUnique({
+      where: { id: req.params.id },
+    });
+    if (!inv) return res.status(404).json({ error: "Invitation not found" });
+    res.json(inv);
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 // GET /api/invitations/:id/rsvps — list RSVPs for an invitation (admin)
 router.get("/:id/rsvps", authenticate, requireAdmin, async (req, res) => {
   try {
@@ -234,6 +342,122 @@ router.get("/:id/rsvps", authenticate, requireAdmin, async (req, res) => {
       orderBy: { createdAt: "desc" },
     });
     res.json(rsvps);
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// ── GUEST ENDPOINTS ─────────────────────────────────────────────────────────
+
+// GET /api/invitations/:id/guests — list guests for an invitation (admin)
+router.get("/:id/guests", authenticate, requireAdmin, async (req, res) => {
+  try {
+    const guests = await prisma.guest.findMany({
+      where: { invitationId: req.params.id },
+      orderBy: { createdAt: "desc" },
+    });
+    res.json(guests);
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// POST /api/invitations/:id/guests/csv — upload guests via CSV (admin)
+router.post("/:id/guests/csv", authenticate, requireAdmin, async (req, res) => {
+  try {
+    const inv = await prisma.invitation.findUnique({
+      where: { id: req.params.id },
+    });
+    if (!inv) return res.status(404).json({ error: "Invitation not found" });
+
+    const { csv } = req.body;
+    if (!csv) return res.status(400).json({ error: "csv field required" });
+
+    let parsed;
+    try {
+      parsed = parseCSV(csv);
+    } catch (e) {
+      return res.status(400).json({ error: e.message });
+    }
+
+    if (parsed.length === 0) {
+      return res.status(400).json({ error: "CSV tidak berisi data tamu yang valid" });
+    }
+
+    // Validate slugs match this invitation
+    const invalidSlugs = parsed.filter((g) => g.slug !== inv.slug);
+    if (invalidSlugs.length > 0) {
+      return res.status(400).json({
+        error: `Slug tidak sesuai. Harusnya "${inv.slug}", ditemukan: ${[...new Set(invalidSlugs.map((g) => g.slug))].join(", ")}`,
+      });
+    }
+
+    // Validate reception codes exist
+    const validCodes = (Array.isArray(inv.receptions) ? inv.receptions : []).map((r) => r.code?.toLowerCase());
+    for (const g of parsed) {
+      for (const r of g.receptions) {
+        if (!validCodes.includes(r.toLowerCase())) {
+          return res.status(400).json({
+            error: `Kode resepsi "${r}" tidak ditemukan. Kode yang tersedia: ${validCodes.join(", ")}`,
+          });
+        }
+      }
+    }
+
+    // Create guests
+    const created = await prisma.guest.createMany({
+      data: parsed.map((g) => ({
+        invitationId: inv.id,
+        name: g.name,
+        receptions: g.receptions,
+      })),
+    });
+
+    res.status(201).json({ success: true, count: created.count });
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// POST /api/invitations/:id/guests — add single guest (admin)
+router.post("/:id/guests", authenticate, requireAdmin, async (req, res) => {
+  try {
+    const { name, receptions } = req.body;
+    if (!name || !receptions || !Array.isArray(receptions)) {
+      return res.status(400).json({ error: "name and receptions[] required" });
+    }
+
+    const guest = await prisma.guest.create({
+      data: {
+        invitationId: req.params.id,
+        name: String(name).trim(),
+        receptions,
+      },
+    });
+    res.status(201).json({ success: true, id: guest.id });
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// DELETE /api/invitations/:id/guests/:guestId — delete guest (admin)
+router.delete("/:id/guests/:guestId", authenticate, requireAdmin, async (req, res) => {
+  try {
+    await prisma.guest.delete({ where: { id: req.params.guestId } });
+    res.json({ success: true });
+  } catch (err) {
+    if (err.code === "P2025") return res.status(404).json({ error: "Guest not found" });
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// DELETE /api/invitations/:id/guests — delete all guests for invitation (admin)
+router.delete("/:id/guests", authenticate, requireAdmin, async (req, res) => {
+  try {
+    const result = await prisma.guest.deleteMany({
+      where: { invitationId: req.params.id },
+    });
+    res.json({ success: true, count: result.count });
   } catch (err) {
     res.status(500).json({ error: "Server error" });
   }
