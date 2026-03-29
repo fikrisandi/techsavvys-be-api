@@ -17,16 +17,12 @@ const PORT = process.env.PORT || 4000;
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" },
 }));
+const allowedOrigins = process.env.CORS_ORIGINS
+  ? process.env.CORS_ORIGINS.split(",").map((o) => o.trim())
+  : ["http://localhost:3000"];
+
 app.use(cors({
-  origin: [
-    "https://techsavvys.com",
-    "https://www.techsavvys.com",
-    "https://techsavvys-official.com",
-    "https://www.techsavvys-official.com",
-    "https://invitation.techsavvys.com",
-    "http://localhost:3000",
-    "http://localhost:3001",
-  ],
+  origin: allowedOrigins,
   credentials: true,
 }));
 app.use(express.json());
