@@ -2,14 +2,15 @@ FROM node:20-alpine
 
 WORKDIR /app
 
+# Copy all source files first to bust cache on any code change
+COPY src ./src
+COPY prisma ./prisma
+COPY templates ./templates
 COPY package*.json ./
+
 RUN npm ci --omit=dev || npm ci --omit=dev || npm ci --omit=dev
 
-COPY prisma ./prisma
 RUN npx prisma generate
-
-COPY src ./src
-COPY templates ./templates
 
 RUN mkdir -p uploads/portfolios uploads/invitations/photos uploads/invitations/music uploads/invitations/couple
 
