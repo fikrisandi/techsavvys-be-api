@@ -17,14 +17,23 @@ const PORT = process.env.PORT || 4000;
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" },
 }));
-const allowedOrigins = process.env.CORS_ORIGINS
+// Production origins always allowed regardless of env var
+const productionOrigins = [
+  'https://techsavvys-official.com',
+  'https://www.techsavvys-official.com',
+];
+const envOrigins = process.env.CORS_ORIGINS
   ? process.env.CORS_ORIGINS.split(",").map((o) => o.trim())
   : ["http://localhost:3000"];
+const allowedOrigins = [...new Set([...productionOrigins, ...envOrigins])];
 
 app.use(cors({
   origin: allowedOrigins,
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
 }));
+app.options('*', cors()); // Handle preflight requests
 app.use(express.json());
 app.use("/uploads", express.static("uploads"));
 
