@@ -27,13 +27,13 @@ const envOrigins = process.env.CORS_ORIGINS
   : ["http://localhost:3000"];
 const allowedOrigins = [...new Set([...productionOrigins, ...envOrigins])];
 
-app.use(cors({
+const corsOptions = {
   origin: allowedOrigins,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
-}));
-app.options('*', cors()); // Handle preflight requests
+};
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use("/uploads", express.static("uploads"));
 
