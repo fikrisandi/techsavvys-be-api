@@ -9,8 +9,9 @@ COPY prisma ./prisma
 RUN npx prisma generate
 
 COPY src ./src
+COPY templates ./templates
 
-RUN mkdir -p uploads/portfolios
+RUN mkdir -p uploads/portfolios uploads/invitations/photos uploads/invitations/music uploads/invitations/couple
 
 EXPOSE 4000
 
