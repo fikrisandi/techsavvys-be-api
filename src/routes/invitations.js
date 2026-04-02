@@ -1,11 +1,63 @@
 const express = require("express");
 const path = require("path");
 const fs = require("fs");
-const { PrismaClient } = require("@prisma/client");
 const { authenticate, requireAdmin } = require("../middleware/auth");
+const prisma = require("../lib/prisma");
 
 const router = express.Router();
-const prisma = new PrismaClient();
+
+const INVITATION_BASE_URL = process.env.INVITATION_BASE_URL || "http://localhost:3000";
+
+// ── Custom Colors Reference ──────────────────────────────────────────────────
+// customColors: { primary, accent, text, secondary }
+//
+// | Field     | Apa yang berubah                                           |
+// |-----------|------------------------------------------------------------|
+// | primary   | Background utama, warna heading, frame foto pasangan       |
+// | accent    | Warna emas/aksen, ornamen, divider, tombol CTA             |
+// | text      | Warna teks body & paragraph                                |
+// | secondary | Warna pendukung: badge, card background, efek dekorasi     |
+//
+// Contoh:
+// { "primary": "#0A3D2E", "accent": "#D4A853", "text": "#F8F4EC", "secondary": "#A8D5BA" }
+//
+// Setiap theme punya mapping CSS variable sendiri. Lihat frontend
+// lib/color-overrides.ts untuk detail per-theme.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const VALID_COLOR_KEYS = ["primary", "accent", "text", "secondary"];
+
+function validateCustomColors(colors) {
+  if (colors === null || colors === undefined) return null;
+  if (typeof colors !== "object" || Array.isArray(colors)) {
+    return { error: "customColors harus berupa object dengan key: primary, accent, text, secondary" };
+  }
+  const cleaned = {};
+  for (const key of Object.keys(colors)) {
+    if (!VALID_COLOR_KEYS.includes(key)) {
+      return { error: `customColors key "${key}" tidak valid. Gunakan: ${VALID_COLOR_KEYS.join(", ")}` };
+    }
+    const val = colors[key];
+    if (val !== null && val !== undefined) {
+      if (typeof val !== "string" || !/^#([0-9a-fA-F]{3,8})$/.test(val)) {
+        return { error: `customColors.${key} harus berupa hex color (misal "#D4A853"), diterima: "${val}"` };
+      }
+      cleaned[key] = val;
+    }
+  }
+  return { value: Object.keys(cleaned).length > 0 ? cleaned : null };
+}
+
+function invitationLink(slug, guestName, receptions) {
+  const base = `${INVITATION_BASE_URL}/${slug}`;
+  if (!guestName) return base;
+  const params = new URLSearchParams();
+  params.set("to", guestName);
+  if (receptions && receptions.length > 0) {
+    params.set("resepsi", receptions.join(","));
+  }
+  return `${base}?${params.toString()}`;
+}
 
 // Delete uploaded file if it's a local upload path
 function deleteFile(url) {
@@ -124,6 +176,57 @@ function parseCSV(text) {
 
 // ── ADMIN ENDPOINTS (defined first to avoid /:slug catching admin paths) ──
 
+// GET /api/invitations/color-guide — reference for customColors fields
+router.get("/color-guide", authenticate, requireAdmin, (req, res) => {
+  res.json({
+    description: "Panduan customColors — field apa mengubah bagian apa di undangan",
+    fields: {
+      primary: {
+        description: "Warna utama tema",
+        affects: [
+          "Background utama halaman",
+          "Warna heading/judul section",
+          "Frame foto pasangan (gradient)",
+          "Accent bar di form RSVP",
+        ],
+        example: "#D4708A",
+      },
+      accent: {
+        description: "Warna aksen/emas",
+        affects: [
+          "Ornamen & divider dekoratif",
+          "Tombol CTA (buka undangan, kirim RSVP)",
+          "Ikon dan sparkle effect",
+          "Warna ampersand (&) di hero",
+        ],
+        example: "#D4A853",
+      },
+      text: {
+        description: "Warna teks utama",
+        affects: [
+          "Body text / paragraph",
+          "Nama pasangan di hero",
+          "Teks informasi acara",
+          "Label countdown",
+        ],
+        example: "#2A1020",
+      },
+      secondary: {
+        description: "Warna pendukung/dekorasi",
+        affects: [
+          "Background card (wishes, event, gift)",
+          "Badge kehadiran di wishes",
+          "Floating petals / efek animasi",
+          "Warna border card",
+        ],
+        example: "#A8D5BA",
+      },
+    },
+    format: "Hex color string, contoh: #D4A853 atau #FFF",
+    note: "Semua field opsional. Hanya kirim field yang ingin di-override, sisanya pakai default theme.",
+  });
+});
+
 // GET /api/invitations — list all invitations (admin)
 router.get("/", authenticate, requireAdmin, async (req, res) => {
   try {
@@ -136,7 +239,7 @@ router.get("/", authenticate, requireAdmin, async (req, res) => {
         _count: { select: { rsvps: true, guests: true } },
       },
     });
-    res.json(invitations);
+    res.json(invitations.map((inv) => ({ ...inv, link: invitationLink(inv.slug) })));
   } catch (err) {
     res.status(500).json({ error: "Server error" });
   }
@@ -155,11 +258,16 @@ router.post("/", authenticate, requireAdmin, async (req, res) => {
       return res.status(400).json({ error: "slug, theme, expiredAt, groom, bride required" });
     }
 
+    if (customColors) {
+      const colorResult = validateCustomColors(customColors);
+      if (colorResult.error) return res.status(400).json({ error: colorResult.error });
+    }
+
     const inv = await prisma.invitation.create({
       data: {
         slug: String(slug).toLowerCase().replace(/\s+/g, "-").trim(),
         theme: String(theme),
-        customColors: customColors ?? null,
+        customColors: customColors ? validateCustomColors(customColors).value : null,
         expiredAt: new Date(expiredAt),
         openingText: openingText ?? null,
         groomNickname: groom.nickname,
@@ -179,7 +287,12 @@ router.post("/", authenticate, requireAdmin, async (req, res) => {
         wishesEnabled: wishesEnabled ?? true,
       },
     });
-    res.status(201).json({ success: true, id: inv.id, slug: inv.slug });
+    res.status(201).json({
+      success: true,
+      id: inv.id,
+      slug: inv.slug,
+      link: invitationLink(inv.slug),
+    });
   } catch (err) {
     if (err.code === "P2002") return res.status(409).json({ error: "Slug already exists" });
     res.status(500).json({ error: "Server error" });
@@ -215,11 +328,18 @@ router.get("/:id/rsvps", authenticate, requireAdmin, async (req, res) => {
 // GET /api/invitations/:id/guests — list guests for an invitation (admin)
 router.get("/:id/guests", authenticate, requireAdmin, async (req, res) => {
   try {
+    const inv = await prisma.invitation.findUnique({
+      where: { id: req.params.id },
+      select: { slug: true },
+    });
     const guests = await prisma.guest.findMany({
       where: { invitationId: req.params.id },
       orderBy: { createdAt: "desc" },
     });
-    res.json(guests);
+    res.json(guests.map((g) => ({
+      ...g,
+      link: inv ? invitationLink(inv.slug, g.name, g.receptions) : null,
+    })));
   } catch (err) {
     res.status(500).json({ error: "Server error" });
   }
@@ -273,7 +393,13 @@ router.post("/:id/guests/csv", authenticate, requireAdmin, async (req, res) => {
       })),
     });
 
-    res.status(201).json({ success: true, count: created.count });
+    const guestLinks = parsed.map((g) => ({
+      name: g.name,
+      receptions: g.receptions,
+      link: invitationLink(inv.slug, g.name, g.receptions),
+    }));
+
+    res.status(201).json({ success: true, count: created.count, guests: guestLinks });
   } catch (err) {
     res.status(500).json({ error: "Server error" });
   }
@@ -287,14 +413,24 @@ router.post("/:id/guests", authenticate, requireAdmin, async (req, res) => {
       return res.status(400).json({ error: "name and receptions[] required" });
     }
 
+    const inv = await prisma.invitation.findUnique({
+      where: { id: req.params.id },
+      select: { slug: true },
+    });
+
+    const guestName = String(name).trim();
     const guest = await prisma.guest.create({
       data: {
         invitationId: req.params.id,
-        name: String(name).trim(),
+        name: guestName,
         receptions,
       },
     });
-    res.status(201).json({ success: true, id: guest.id });
+    res.status(201).json({
+      success: true,
+      id: guest.id,
+      link: inv ? invitationLink(inv.slug, guestName, receptions) : null,
+    });
   } catch (err) {
     res.status(500).json({ error: "Server error" });
   }
@@ -332,9 +468,16 @@ router.put("/:id", authenticate, requireAdmin, async (req, res) => {
       musicUrl, rsvpEnabled, wishesEnabled, isActive,
     } = req.body;
 
+    if (customColors !== undefined && customColors !== null) {
+      const colorResult = validateCustomColors(customColors);
+      if (colorResult.error) return res.status(400).json({ error: colorResult.error });
+    }
+
     const data = {};
     if (theme) data.theme = theme;
-    if (customColors !== undefined) data.customColors = customColors;
+    if (customColors !== undefined) {
+      data.customColors = customColors === null ? null : validateCustomColors(customColors).value;
+    }
     if (expiredAt) data.expiredAt = new Date(expiredAt);
     if (openingText !== undefined) data.openingText = openingText;
     if (groom) {
@@ -458,8 +601,16 @@ router.get("/:slug", async (req, res) => {
     if (!inv) return res.status(404).json({ error: "Invitation not found" });
 
     let guestReceptions = null;
+
+    // 1) Filter by ?resepsi= param (explicit reception codes in URL)
+    const resepsiParam = req.query.resepsi;
+    if (resepsiParam) {
+      guestReceptions = String(resepsiParam).split(",").map((r) => r.trim()).filter(Boolean);
+    }
+
+    // 2) If no resepsi param, fallback to guest name lookup
     const guestName = req.query.to;
-    if (guestName) {
+    if (!guestReceptions && guestName) {
       const decoded = decodeURIComponent(String(guestName)).trim();
       const guest = await prisma.guest.findFirst({
         where: {

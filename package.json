@@ -8,7 +8,8 @@
     "dev": "node --watch src/index.js",
     "migrate": "npx prisma migrate dev",
     "seed": "node prisma/seed.js",
-    "generate": "npx prisma generate"
+    "generate": "npx prisma generate",
+    "test": "jest --verbose --forceExit --detectOpenHandles"
   },
   "prisma": {
     "seed": "node prisma/seed.js"
@@ -26,5 +27,10 @@
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.1.1",
     "prisma": "^6.19.2"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "jest": "^30.3.0",
+    "supertest": "^7.2.2"
   }
 }
