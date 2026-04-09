@@ -8,7 +8,7 @@ const router = express.Router();
 
 function generateAccessToken(user) {
   return jwt.sign(
-    { id: user.id, email: user.email, role: user.role },
+    { id: user.id, email: user.email, role: "ADMIN" },
     process.env.JWT_SECRET,
     { expiresIn: "15m" }
   );
@@ -54,7 +54,7 @@ router.post("/login", async (req, res) => {
     res.json({
       accessToken,
       refreshToken,
-      user: { id: user.id, name: user.name, email: user.email, role: user.role },
+      user: { id: user.id, name: user.name, email: user.email, role: "ADMIN" },
     });
   } catch (err) {
     res.status(500).json({ error: "Server error" });
@@ -104,9 +104,9 @@ router.get("/me", authenticate, async (req, res) => {
   try {
     const user = await prisma.user.findUnique({
       where: { id: req.user.id },
-      select: { id: true, name: true, email: true, role: true },
+      select: { id: true, name: true, email: true },
     });
-    res.json(user);
+    res.json(user ? { ...user, role: "ADMIN" } : null);
   } catch (err) {
     res.status(500).json({ error: "Server error" });
   }

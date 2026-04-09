@@ -16,10 +16,10 @@ function authenticate(req, res, next) {
   }
 }
 
+// Admin-only system: any authenticated user is admin.
+// Kept as a no-op for backwards compatibility with existing routes.
+// Will be removed in Fase 1 when routes migrate to TS modules.
 function requireAdmin(req, res, next) {
-  if (req.user.role !== "ADMIN") {
-    return res.status(403).json({ error: "Admin access required" });
-  }
   next();
 }
 

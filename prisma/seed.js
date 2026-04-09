@@ -13,7 +13,6 @@ async function main() {
       name: "Muhammad Fikri Sandi Pratama",
       email: "m.fikrisandi.p@gmail.com",
       password: hashedPassword,
-      role: "ADMIN",
     },
   });
 
