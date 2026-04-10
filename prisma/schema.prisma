@@ -99,6 +99,9 @@ model Invitation {
   slug          String   @unique
   theme         String
   customColors  Json?
+  effects       Json     @default("[]")
+  effectConfig  Json     @default("{}")
+  font          String?
   expiredAt     DateTime
   openingText   String?
   groomNickname String

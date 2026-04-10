@@ -249,7 +249,8 @@ router.get("/", authenticate, requireAdmin, async (req, res) => {
 router.post("/", authenticate, requireAdmin, async (req, res) => {
   try {
     const {
-      slug, theme, customColors, expiredAt, openingText,
+      slug, theme, customColors, effects, effectConfig,
+      expiredAt, openingText,
       groom, bride, akad, receptions, photos, banks,
       musicUrl, rsvpEnabled, wishesEnabled,
     } = req.body;
@@ -268,6 +269,8 @@ router.post("/", authenticate, requireAdmin, async (req, res) => {
         slug: String(slug).toLowerCase().replace(/\s+/g, "-").trim(),
         theme: String(theme),
         customColors: customColors ? validateCustomColors(customColors).value : null,
+        effects: Array.isArray(effects) ? effects : [],
+        effectConfig: effectConfig && typeof effectConfig === "object" ? effectConfig : {},
         expiredAt: new Date(expiredAt),
         openingText: openingText ?? null,
         groomNickname: groom.nickname,
@@ -463,7 +466,8 @@ router.delete("/:id/guests", authenticate, requireAdmin, async (req, res) => {
 router.put("/:id", authenticate, requireAdmin, async (req, res) => {
   try {
     const {
-      theme, customColors, expiredAt, openingText,
+      theme, customColors, effects, effectConfig,
+      expiredAt, openingText,
       groom, bride, akad, receptions, photos, banks,
       musicUrl, rsvpEnabled, wishesEnabled, isActive,
     } = req.body;
@@ -496,6 +500,8 @@ router.put("/:id", authenticate, requireAdmin, async (req, res) => {
     if (receptions) data.receptions = receptions;
     if (photos) data.photos = photos;
     if (banks) data.banks = banks;
+    if (effects !== undefined) data.effects = Array.isArray(effects) ? effects : [];
+    if (effectConfig !== undefined) data.effectConfig = effectConfig && typeof effectConfig === "object" ? effectConfig : {};
     if (musicUrl !== undefined) data.musicUrl = musicUrl;
     if (rsvpEnabled !== undefined) data.rsvpEnabled = rsvpEnabled;
     if (wishesEnabled !== undefined) data.wishesEnabled = wishesEnabled;
