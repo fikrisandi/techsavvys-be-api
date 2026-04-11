@@ -21,6 +21,7 @@ app.use(helmet({
 const productionOrigins = [
   'https://techsavvys-official.com',
   'https://www.techsavvys-official.com',
+  'https://invitation.techsavvys-official.com',
 ];
 const envOrigins = process.env.CORS_ORIGINS
   ? process.env.CORS_ORIGINS.split(",").map((o) => o.trim())
@@ -28,7 +29,15 @@ const envOrigins = process.env.CORS_ORIGINS
 const allowedOrigins = [...new Set([...productionOrigins, ...envOrigins])];
 
 const corsOptions = {
-  origin: allowedOrigins,
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile, curl, Postman)
+    if (!origin) return callback(null, true);
+    // Allow listed origins
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    // Allow Vercel preview/production URLs
+    if (origin.endsWith('.vercel.app')) return callback(null, true);
+    callback(new Error(`CORS: origin ${origin} not allowed`));
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
