@@ -50,6 +50,19 @@ app.use("/uploads", express.static("uploads"));
 // Global rate limit — 100 requests per 15 menit per IP
 app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 100, standardHeaders: true, legacyHeaders: false }));
 
+// API Key protection — tolak request tanpa key yang valid
+const API_KEY = process.env.API_KEY;
+if (API_KEY) {
+  app.use("/api", (req, res, next) => {
+    if (req.path === "/health") return next();
+    const key = req.headers["x-api-key"];
+    if (key !== API_KEY) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    next();
+  });
+}
+
 // Auth rate limit — ketat untuk cegah brute force
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
