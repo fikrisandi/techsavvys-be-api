@@ -2,6 +2,7 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
+const rateLimit = require("express-rate-limit");
 
 const authRoutes = require("./routes/auth");
 const portfolioRoutes = require("./routes/portfolios");
@@ -46,8 +47,20 @@ app.use(cors(corsOptions));
 app.use(express.json());
 app.use("/uploads", express.static("uploads"));
 
+// Global rate limit — 100 requests per 15 menit per IP
+app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 100, standardHeaders: true, legacyHeaders: false }));
+
+// Auth rate limit — ketat untuk cegah brute force
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { error: "Terlalu banyak percobaan login. Coba lagi dalam 15 menit." },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // Routes
-app.use("/api/auth", authRoutes);
+app.use("/api/auth", authLimiter, authRoutes);
 app.use("/api/portfolios", portfolioRoutes);
 app.use("/api/testimonials", testimonialRoutes);
 app.use("/api/contacts", contactRoutes);
