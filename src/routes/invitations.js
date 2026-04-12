@@ -48,8 +48,8 @@ function validateCustomColors(colors) {
   return { value: Object.keys(cleaned).length > 0 ? cleaned : null };
 }
 
-function invitationLink(slug, guestName, receptions) {
-  const base = `${INVITATION_BASE_URL}/${slug}`;
+function invitationLink(slug, guestName, receptions, theme) {
+  const base = theme ? `${INVITATION_BASE_URL}/${theme}/${slug}` : `${INVITATION_BASE_URL}/${slug}`;
   if (!guestName) return base;
   const params = new URLSearchParams();
   params.set("to", guestName);
@@ -239,7 +239,7 @@ router.get("/", authenticate, requireAdmin, async (req, res) => {
         _count: { select: { rsvps: true, guests: true } },
       },
     });
-    res.json(invitations.map((inv) => ({ ...inv, link: invitationLink(inv.slug) })));
+    res.json(invitations.map((inv) => ({ ...inv, link: invitationLink(inv.slug, null, null, inv.theme) })));
   } catch (err) {
     res.status(500).json({ error: "Server error" });
   }
@@ -294,7 +294,7 @@ router.post("/", authenticate, requireAdmin, async (req, res) => {
       success: true,
       id: inv.id,
       slug: inv.slug,
-      link: invitationLink(inv.slug),
+      link: invitationLink(inv.slug, null, null, inv.theme),
     });
   } catch (err) {
     if (err.code === "P2002") return res.status(409).json({ error: "Slug already exists" });
@@ -341,7 +341,7 @@ router.get("/:id/guests", authenticate, requireAdmin, async (req, res) => {
     });
     res.json(guests.map((g) => ({
       ...g,
-      link: inv ? invitationLink(inv.slug, g.name, g.receptions) : null,
+      link: inv ? invitationLink(inv.slug, g.name, g.receptions, inv.theme) : null,
     })));
   } catch (err) {
     res.status(500).json({ error: "Server error" });
@@ -399,7 +399,7 @@ router.post("/:id/guests/csv", authenticate, requireAdmin, async (req, res) => {
     const guestLinks = parsed.map((g) => ({
       name: g.name,
       receptions: g.receptions,
-      link: invitationLink(inv.slug, g.name, g.receptions),
+      link: invitationLink(inv.slug, g.name, g.receptions, inv.theme),
     }));
 
     res.status(201).json({ success: true, count: created.count, guests: guestLinks });
@@ -432,7 +432,7 @@ router.post("/:id/guests", authenticate, requireAdmin, async (req, res) => {
     res.status(201).json({
       success: true,
       id: guest.id,
-      link: inv ? invitationLink(inv.slug, guestName, receptions) : null,
+      link: inv ? invitationLink(inv.slug, guestName, receptions, inv.theme) : null,
     });
   } catch (err) {
     res.status(500).json({ error: "Server error" });
