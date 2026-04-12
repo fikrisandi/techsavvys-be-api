@@ -132,11 +132,10 @@ function parseCSV(text) {
 
   const headers = lines[0].split(",").map((h) => h.trim().replace(/^"|"$/g, "").toLowerCase());
   const nameIdx = headers.indexOf("nama_tamu");
-  const slugIdx = headers.indexOf("slug");
   const receptionIdx = headers.indexOf("resepsi");
 
-  if (nameIdx === -1 || slugIdx === -1 || receptionIdx === -1) {
-    throw new Error("CSV harus memiliki kolom: nama_tamu, slug, resepsi");
+  if (nameIdx === -1 || receptionIdx === -1) {
+    throw new Error("CSV harus memiliki kolom: nama_tamu, resepsi");
   }
 
   const guests = [];
@@ -160,15 +159,14 @@ function parseCSV(text) {
     cols.push(current.trim());
 
     const name = cols[nameIdx]?.replace(/^"|"$/g, "").trim();
-    const slug = cols[slugIdx]?.replace(/^"|"$/g, "").trim();
     const receptions = cols[receptionIdx]
       ?.replace(/^"|"$/g, "")
       .split("|")
       .map((r) => r.trim())
       .filter(Boolean);
 
-    if (name && slug && receptions && receptions.length > 0) {
-      guests.push({ name, slug, receptions });
+    if (name && receptions && receptions.length > 0) {
+      guests.push({ name, receptions });
     }
   }
   return guests;
@@ -368,13 +366,6 @@ router.post("/:id/guests/csv", authenticate, requireAdmin, async (req, res) => {
 
     if (parsed.length === 0) {
       return res.status(400).json({ error: "CSV tidak berisi data tamu yang valid" });
-    }
-
-    const invalidSlugs = parsed.filter((g) => g.slug !== inv.slug);
-    if (invalidSlugs.length > 0) {
-      return res.status(400).json({
-        error: `Slug tidak sesuai. Harusnya "${inv.slug}", ditemukan: ${[...new Set(invalidSlugs.map((g) => g.slug))].join(", ")}`,
-      });
     }
 
     const validCodes = (Array.isArray(inv.receptions) ? inv.receptions : []).map((r) => r.code?.toLowerCase());
